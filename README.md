@@ -1,6 +1,7 @@
 # cJSON
 
-Fork of the ultralightweight JSON parser in ANSI C by Dave Gable, suppressing early conversion of numbers, parsing them as sequence of non space characters instead returned as strings. 
+Ultralightweight JSON parser in ANSI C.
+Fork with a patch that suppresses early conversion of numbers, parsing them as sequence of non space characters instead returned as strings. 
 
 ## Table of contents
 * [License](#license)
