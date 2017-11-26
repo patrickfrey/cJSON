@@ -1,0 +1,133 @@
+diff --git a/cJSON.c b/cJSON.c
+index cef719f..8b0ef12 100644
+--- a/cJSON.c
++++ b/cJSON.c
+@@ -20,6 +20,9 @@
+   THE SOFTWARE.
+ */
+ 
++#define PF_PATCH_NONUMBERS
++/* PF:PATCH: This patch suppresses converion of numbers in the JSON parser. It is switched on or off with this define. The patch propagates the concept of late evaluation. The parser does not decide wheter a token is an integer, float or double. It should also be possible to define big numbers or big strings defined as sequence of digits in plain without quotes. */
++
+ /* cJSON */
+ /* JSON parser in C. */
+ 
+@@ -255,6 +258,7 @@ typedef struct
+ /* get a pointer to the buffer at the position */
+ #define buffer_at_offset(buffer) ((buffer)->content + (buffer)->offset)
+ 
++#ifndef PF_PATCH_NONUMBERS
+ /* Parse the input text to generate a number, and populate the result into item. */
+ static cJSON_bool parse_number(cJSON * const item, parse_buffer * const input_buffer)
+ {
+@@ -331,6 +335,7 @@ loop_end:
+     input_buffer->offset += (size_t)(after_end - number_c_string);
+     return true;
+ }
++#endif
+ 
+ /* don't ask me, but the original cJSON_SetNumberValue returns an integer or double */
+ CJSON_PUBLIC(double) cJSON_SetNumberHelper(cJSON *object, double number)
+@@ -816,6 +821,75 @@ fail:
+     return false;
+ }
+ 
++#ifdef PF_PATCH_NONUMBERS
++static cJSON_bool is_token_chr( unsigned char chr)
++{
++	unsigned char lochr = chr|32;
++	if (lochr >= 'a' && lochr <= 'z') return true;
++	if (chr == '-' || chr == '+' || chr == '_') return true;
++	if (chr >= '0' && chr <= '9') return true;
++	return false;
++}
++
++/* PF:PATCH: Parse a token, a sequence of non space characters. */
++static cJSON_bool parse_token(cJSON * const item, parse_buffer * const input_buffer)
++{
++    const char opchr[] = "{}[],;=\"\'\n\t\b\r-+/()";
++    const unsigned char *input_pointer = buffer_at_offset(input_buffer) + 1;
++    const unsigned char *input_end = buffer_at_offset(input_buffer) + 1;
++    unsigned char *output_pointer = NULL;
++    unsigned char *output = NULL;
++    {
++        /* calculate approximate size of the output (overestimate) */
++        size_t allocation_length = 0;
++        size_t skipped_bytes = 0;
++        while (((size_t)(input_end - input_buffer->content) < input_buffer->length) && (strchr( opchr, *input_end) == NULL))
++        {
++            /* is escape sequence */
++            input_end++;
++        }
++
++        /* This is at most how much we need for the output */
++        allocation_length = (size_t) (input_end - buffer_at_offset(input_buffer)) - skipped_bytes;
++        output = (unsigned char*)input_buffer->hooks.allocate(allocation_length + sizeof(""));
++        if (output == NULL)
++        {
++            goto fail; /* allocation failure */
++        }
++    }
++
++    output_pointer = output;
++    /* loop through the token literal */
++    while (input_pointer < input_end)
++    {
++        *output_pointer++ = *input_pointer++;
++    }
++
++    /* zero terminate the output */
++    *output_pointer = '\0';
++
++    item->type = cJSON_String;
++    item->valuestring = (char*)output;
++
++    input_buffer->offset = (size_t) (input_end - input_buffer->content);
++    input_buffer->offset++;
++
++    return true;
++
++fail:
++    if (output != NULL)
++    {
++        input_buffer->hooks.deallocate(output);
++    }
++
++    if (input_pointer != NULL)
++    {
++        input_buffer->offset = (size_t)(input_pointer - input_buffer->content);
++    }
++    return false;
++}
++#endif
++
+ /* Render the cstring provided to an escaped version that can be printed. */
+ static cJSON_bool print_string_ptr(const unsigned char * const input, printbuffer * const output_buffer)
+ {
+@@ -1235,11 +1309,18 @@ static cJSON_bool parse_value(cJSON * const item, parse_buffer * const input_buf
+     {
+         return parse_string(item, input_buffer);
+     }
++#ifdef PF_PATCH_NONUMBERS
++    if (can_access_at_index(input_buffer, 0) && is_token_chr( buffer_at_offset(input_buffer)[0]))
++    {
++        return parse_token(item, input_buffer);
++    }
++#else
+     /* number */
+     if (can_access_at_index(input_buffer, 0) && ((buffer_at_offset(input_buffer)[0] == '-') || ((buffer_at_offset(input_buffer)[0] >= '0') && (buffer_at_offset(input_buffer)[0] <= '9'))))
+     {
+         return parse_number(item, input_buffer);
+     }
++#endif
+     /* array */
+     if (can_access_at_index(input_buffer, 0) && (buffer_at_offset(input_buffer)[0] == '['))
+     {
+@@ -1250,7 +1331,6 @@ static cJSON_bool parse_value(cJSON * const item, parse_buffer * const input_buf
+     {
+         return parse_object(item, input_buffer);
+     }
+-
+     return false;
+ }
+ 
