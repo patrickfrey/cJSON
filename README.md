@@ -1,7 +1,7 @@
 # cJSON
 
 Ultralightweight JSON parser in ANSI C.
-Fork with a patch that suppresses early conversion of numbers, parsing them as sequence of non space characters instead returned as strings. 
+Fork with a patch that makes cJSON threadsafe (remove global error variable) and that suppresses early conversion of numbers, parsing them as sequence of non space characters instead returned as strings. 
 
 ## Table of contents
 * [License](#license)
